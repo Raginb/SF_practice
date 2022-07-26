@@ -21,11 +21,11 @@ var fetchTableDtlsFromControlTbl_SQL = `Select * from `+ DBNAME+'.'+SCHEMANAME+'
 log(fetchTableDtlsFromControlTbl_SQL)
 var rs = snowflake.createStatement({sqlText: fetchTableDtlsFromControlTbl_SQL}).execute()
 while (rs.next()){
-	var sourceDb =  rs.getColumnValue('SOURCE_DB') 
+    var sourceDb =  rs.getColumnValue('SOURCE_DB') 
     var targetDb = rs.getColumnValue('TARGET_DB') 
     var sourceSchema = rs.getColumnValue('SOURCE_SCHEMA') 
     var sourceTable =  rs.getColumnValue('SOURCE_TABLE') 
-	var targetSchema = rs.getColumnValue('TARGET_SCHEMA') 
+    var targetSchema = rs.getColumnValue('TARGET_SCHEMA') 
     var targetTable = rs.getColumnValue('TARGET_TABLE') 
     var processType=rs.getColumnValue('PROCESS_TYPE')
 
