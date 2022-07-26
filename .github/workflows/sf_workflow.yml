@@ -1,36 +1,104 @@
-# This is a basic workflow to help you get started with Actions
+#dynamic table
 
-name: CI
+create or replace procedure EDW_SBX.INT.READ_CREATE_TABLES(DBname STRING, SchemaName STRING)
+returns string 
+language javascript
+execute as caller
+as     
+$$
+function log(msg){
+var sp_name= Object.keys(this)[0];
+msgStr = sp_name +' -->'+msg
+snowflake.createStatement( { sqlText: `call do_log(:1)`, binds:[msgStr] } ).execute();
+}
 
-# Controls when the workflow will run
-on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+var resultOut
+var tableExists = false
+var flagExists = false
+var ctsExists = false
+var fetchTableDtlsFromControlTbl_SQL = `Select * from `+ DBNAME+'.'+SCHEMANAME+'.CPM_SOURCE2TARGET';
+log(fetchTableDtlsFromControlTbl_SQL)
+var rs = snowflake.createStatement({sqlText: fetchTableDtlsFromControlTbl_SQL}).execute()
+while (rs.next()){
+	var sourceDb =  rs.getColumnValue('SOURCE_DB') 
+    var targetDb = rs.getColumnValue('TARGET_DB') 
+    var sourceSchema = rs.getColumnValue('SOURCE_SCHEMA') 
+    var sourceTable =  rs.getColumnValue('SOURCE_TABLE') 
+	var targetSchema = rs.getColumnValue('TARGET_SCHEMA') 
+    var targetTable = rs.getColumnValue('TARGET_TABLE') 
+    var processType=rs.getColumnValue('PROCESS_TYPE')
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+   if (processType == 'F') {
+    try{
+        var tarTableExistsOrNot =`select count(*) from  `+targetDb+`.INFORMATION_SCHEMA.TABLES where TABLE_SCHEMA='`+targetSchema+`'`
+        +` AND  TABLE_NAME= '`+targetTable+`'`
+        var rs1 = snowflake.execute({sqlText : tarTableExistsOrNot})
+        tableExists = true
+        
+        }catch(err){
+        tableExists=false
+        }
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+  if (tableExists=false) {
+   //1.if FLAG COLUMN THERE IN SOURCE_TABLE NOT REQUIRED TO ADD FLAG INTO TARGET. IF not we need to add into target_table
+   log(tableExists)
+   
+	var create_stmt='CREATE  TABLE '+targetDb+'.'+targetSchema+'.'+ targetTable + ' like '+sourceDb+'.'+sourceSchema+'.'+ sourceTable 
+    log(create_stmt)
+    var statement2 = snowflake.createStatement( {sqlText: create_stmt} );
+    statement2.execute();
+	
+    }else {
+     var colSql = `select listagg(upper(column_name)) from information_schema.columns where table_name='`+sourceTable+`'`
+     log(colSql)
+     var statement3 = snowflake.createStatement( {sqlText: colSql} );
+     var rs = statement3.execute();
+     rs.next()
+     allCols = rs.getColumnValue(1)
+     log(allCols)
+     if (allCols.includes('FLAG')){
+        flagExists=true       
+     }
+     log('flagExists;'+flagExists)
+     if (allCols.includes('CHANGE_TIMESTAMP')){
+       ctsExists = true
+     }
+     log('ctsExists;'+ctsExists)
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+    var altSqlStmt;
+    
+    if (flagExists==false){
+     try{
+      altSqlStmt =  ' alter table '+ targetDb +'.'+targetSchema+'.'+targetTable +' add  flag varchar '
+      var rs = snowflake.execute({sqlText:altSqlStmt})
+      log(altSqlStmt)      
+     }catch(err){
+       log(err.message)
+     }
+    }
+    
+    if (ctsExists==false){
+     try{
+      altSqlStmt =  ' alter table '+ targetDb +'.'+targetSchema+'.'+targetTable +' add  change_timestamp timestamp '
+      var rs = snowflake.execute({sqlText:altSqlStmt})
+      log(altSqlStmt)      
+     }catch(err){
+       log(err.message)
+     }
+    }
+    
+     try{
+      altSqlStmt =  ' alter table '+ targetDb +'.'+targetSchema+'.'+targetTable +' add  HASH_KEY varchar  , hash_payload varchar '
+      log(altSqlStmt)
+      var rs = snowflake.execute({sqlText:altSqlStmt})
+     }catch(err){
+       log(err.message)
+     }
+    
+    }
+        
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+    }
+   }
+$$;
